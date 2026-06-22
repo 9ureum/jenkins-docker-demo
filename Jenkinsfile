@@ -19,12 +19,15 @@ pipeline {
 
     stage('Smoke Test') {
       steps {
+        // Jenkins talks to the host's Docker daemon, so containers it starts are
+        // siblings, not children: "localhost" inside the Jenkins container won't
+        // reach their published ports. A helper curl container sharing the
+        // target's network namespace (--network container:NAME) does.
         sh '''
           docker rm -f ${IMAGE_NAME}-smoke || true
-          docker run -d --rm --name ${IMAGE_NAME}-smoke -p 0:3000 ${IMAGE_NAME}:${BUILD_NUMBER}
+          docker run -d --name ${IMAGE_NAME}-smoke ${IMAGE_NAME}:${BUILD_NUMBER}
           sleep 2
-          PORT=$(docker port ${IMAGE_NAME}-smoke 3000/tcp | cut -d: -f2)
-          curl -sf http://localhost:${PORT}/
+          docker run --rm --network container:${IMAGE_NAME}-smoke curlimages/curl:8.10.1 -sf http://localhost:3000/
           docker rm -f ${IMAGE_NAME}-smoke
         '''
       }
@@ -43,7 +46,7 @@ pipeline {
       steps {
         sh '''
           sleep 2
-          curl -sf http://localhost:${DEPLOY_PORT}/
+          docker run --rm --network container:${DEPLOY_CONTAINER} curlimages/curl:8.10.1 -sf http://localhost:3000/
         '''
       }
     }
